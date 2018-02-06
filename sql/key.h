@@ -19,6 +19,7 @@
 #include "my_global.h"                          /* uchar */
 #include "my_base.h"                   /* ha_rows, ha_key_alg */
 #include "sql_plugin_ref.h"            /* plugin_ref */
+#include "mysql_com.h"
 
 class Field;
 class String;
@@ -279,6 +280,12 @@ public:
   }
 } KEY;
 
+typedef struct st_index_usage
+{
+  char index[NAME_LEN * 3 + 3];
+  size_t index_len;
+  ulonglong usage;
+} INDEX_USAGE;
 
 int find_ref_key(KEY *key, uint key_count, uchar *record, Field *field,
                  uint *key_length, uint *keypart);

@@ -25,6 +25,7 @@
 #include "my_thread_local.h"               /* my_get_thread_local */
 #include "my_thread.h"                     /* my_thread_attr_t */
 #include "atomic_class.h"                  /* Atomic_int32 */
+#include "hash.h"
 
 class THD;
 struct handlerton;
@@ -331,6 +332,8 @@ extern char *opt_keyring_migration_socket;
 extern char *opt_keyring_migration_source;
 extern char *opt_keyring_migration_destination;
 extern ulong opt_keyring_migration_port;
+extern HASH global_index_usage;
+
 /**
   Variable to check if connection related options are set
   as part of keyring migration.
@@ -448,6 +451,7 @@ extern PSI_mutex_key key_thd_timer_mutex;
 extern PSI_mutex_key key_LOCK_offline_mode;
 extern PSI_mutex_key key_LOCK_default_password_lifetime;
 extern PSI_mutex_key key_LOCK_group_replication_handler;
+extern PSI_mutex_key key_LOCK_global_index_usage;
 
 #ifdef HAVE_REPLICATION
 extern PSI_mutex_key key_commit_order_manager_mutex;
@@ -639,6 +643,7 @@ extern PSI_memory_key key_memory_get_all_tables;
 extern PSI_memory_key key_memory_fill_schema_schemata;
 extern PSI_memory_key key_memory_native_functions;
 extern PSI_memory_key key_memory_JSON;
+extern PSI_memory_key key_memory_index_usage;
 
 C_MODE_END
 
@@ -840,6 +845,7 @@ extern mysql_cond_t COND_manager;
 extern int32 thread_running;
 extern mysql_mutex_t LOCK_group_replication_handler;
 extern mysql_mutex_t LOCK_keyring_operations;
+extern mysql_mutex_t LOCK_global_index_usage;
 
 extern char *opt_ssl_ca, *opt_ssl_capath, *opt_ssl_cert, *opt_ssl_cipher,
             *opt_ssl_key, *opt_ssl_crl, *opt_ssl_crlpath, *opt_tls_version;
@@ -975,6 +981,9 @@ inline MY_ATTRIBUTE((warn_unused_result)) query_id_t next_query_id()
   query_id_t id= my_atomic_add64(&global_query_id, 1);
   return (id+1);
 }
+
+void init_global_index_usage(void);
+void free_global_index_usage(void);
 
 /*
   TODO: Replace this with an inline function.

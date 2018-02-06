@@ -374,6 +374,38 @@ void free_max_user_conn(void)
 }
 
 
+#ifndef EMBEDDED_LIBRARY
+extern "C" uchar *get_key_index_usage(INDEX_USAGE *index_usage, size_t *length,
+                                      my_bool not_used __attribute__((unused)))
+{
+    *length= index_usage->index_len;
+    return (uchar*) index_usage->index;
+}
+
+extern "C" void free_index_usage(INDEX_USAGE* index_usage)
+{
+    my_free((char*) index_usage);
+}
+
+void free_global_index_usage()
+{
+    my_hash_free(&global_index_usage);
+}
+
+void init_global_index_usage(void)
+{
+    if (my_hash_init(&global_index_usage, system_charset_info, max_connections,
+                     0, 0, (my_hash_get_key) get_key_index_usage,
+                     (my_hash_free_key) free_index_usage, 0,
+                     key_memory_index_usage))
+    {
+        sql_print_error("Initializing global_index_usage failed.");
+        exit(1);
+    }
+}
+#endif
+
+
 void reset_mqh(LEX_USER *lu, bool get_them= 0)
 {
 #ifndef NO_EMBEDDED_ACCESS_CHECKS

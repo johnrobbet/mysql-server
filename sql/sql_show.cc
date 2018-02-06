@@ -6081,11 +6081,11 @@ static int get_schema_stat_record(THD *thd, TABLE_LIST *tables,
           {
             double records= (show_table->file->stats.records /
                              key->records_per_key(j));
-            table->field[9]->store(static_cast<longlong>(round(records)), TRUE);
+            table->field[9]->store(static_cast<longlong>(round(records)), TRUE); // Cardinality
             table->field[9]->set_notnull();
           }
           str= show_table->file->index_type(i);
-          table->field[13]->store(str, strlen(str), cs);
+            table->field[13]->store(str, strlen(str), cs); // 13: index type
         }
         if (!(key_info->flags & HA_FULLTEXT) &&
             (key_part->field &&
@@ -6098,16 +6098,44 @@ static int get_schema_stat_record(THD *thd, TABLE_LIST *tables,
         }
         uint flags= key_part->field ? key_part->field->flags : 0;
         const char *pos=(char*) ((flags & NOT_NULL_FLAG) ? "" : "YES");
-        table->field[12]->store(pos, strlen(pos), cs);
+        table->field[12]->store(pos, strlen(pos), cs); // Nullable
+
+#ifndef EMBEDDED_LIBRARY
+          // 14: Index usage.
+          mysql_mutex_lock(&LOCK_global_index_usage);
+
+          char key[NAME_CHAR_LEN * 3 + 3]; // [db] + '.' + [table] + '.' + [index]
+          INDEX_USAGE* index_usage;
+          sprintf(key, "%s.%s.%s",  db_name->str, table_name->str, key_info->name);
+
+          // Get the index usage count from the global index usage hash and fill
+          // the result table, use 0 if not found.
+          if ((index_usage = (INDEX_USAGE *) my_hash_search(&global_index_usage,
+                                                             (uchar *) key,
+                                                             strlen(key))) != NULL)
+          {
+              table->field[14]->store((long long)index_usage->usage, TRUE);
+          }
+          else
+          {
+              table->field[14]->store(0, TRUE);
+          }
+          table->field[14]->set_notnull();
+
+          mysql_mutex_unlock(&LOCK_global_index_usage);
+#endif
+
+        // comments: 15
         if (!show_table->s->keys_in_use.is_set(i))
-          table->field[14]->store(STRING_WITH_LEN("disabled"), cs);
+          table->field[15]->store(STRING_WITH_LEN("disabled"), cs);
         else
-          table->field[14]->store("", 0, cs);
-        table->field[14]->set_notnull();
+          table->field[15]->store("", 0, cs);
+        table->field[15]->set_notnull();
+
         DBUG_ASSERT(MY_TEST(key_info->flags & HA_USES_COMMENT) ==
                    (key_info->comment.length > 0));
-        if (key_info->flags & HA_USES_COMMENT)
-          table->field[15]->store(key_info->comment.str, 
+        if (key_info->flags & HA_USES_COMMENT) // 16 Index_comment
+          table->field[16]->store(key_info->comment.str,
                                   key_info->comment.length, cs);
         if (schema_table_store_record(thd, table))
           DBUG_RETURN(1);
@@ -8548,6 +8576,7 @@ ST_FIELD_INFO stat_fields_info[]=
   {"PACKED", 10, MYSQL_TYPE_STRING, 0, 1, "Packed", OPEN_FRM_ONLY},
   {"NULLABLE", 3, MYSQL_TYPE_STRING, 0, 0, "Null", OPEN_FRM_ONLY},
   {"INDEX_TYPE", 16, MYSQL_TYPE_STRING, 0, 0, "Index_type", OPEN_FULL_TABLE},
+  {"USAGE", MY_INT64_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONGLONG, 0, 1, "Usage", OPEN_FULL_TABLE},
   {"COMMENT", 16, MYSQL_TYPE_STRING, 0, 1, "Comment", OPEN_FRM_ONLY},
   {"INDEX_COMMENT", INDEX_COMMENT_MAXLEN, MYSQL_TYPE_STRING, 0, 0, 
    "Index_comment", OPEN_FRM_ONLY},

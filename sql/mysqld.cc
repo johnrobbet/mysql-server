@@ -494,6 +494,7 @@ bool host_cache_size_specified= false;
 bool table_definition_cache_specified= false;
 ulong locked_account_connection_count= 0;
 bool opt_keyring_operations= TRUE;
+HASH global_index_usage;
 
 /**
   Limit of the total number of prepared statements in the server.
@@ -663,6 +664,11 @@ mysql_mutex_t LOCK_sql_rand;
   server may be fairly high, we need a dedicated lock.
 */
 mysql_mutex_t LOCK_prepared_stmt_count;
+
+/**
+  The following global lock is to protect the global index usage hash.
+*/
+mysql_mutex_t LOCK_global_index_usage;
 
 /*
  The below two locks are introudced as guards (second mutex) for
@@ -1342,6 +1348,9 @@ void clean_up(bool print_message)
   my_free(opt_bin_logname);
   bitmap_free(&temp_pool);
   free_max_user_conn();
+#ifndef EMBEDDED_LIBRARY
+  free_global_index_usage();
+#endif
 #ifdef HAVE_REPLICATION
   end_slave_list();
 #endif
@@ -1449,6 +1458,7 @@ static void clean_up_mutexes()
   mysql_mutex_destroy(&LOCK_start_signal_handler);
 #endif
   mysql_mutex_destroy(&LOCK_keyring_operations);
+  mysql_mutex_destroy(&LOCK_global_index_usage);
 }
 
 
@@ -3229,6 +3239,8 @@ static int init_thread_environment()
                   &COND_compress_gtid_table);
   mysql_mutex_init(key_LOCK_group_replication_handler,
                    &LOCK_group_replication_handler, MY_MUTEX_INIT_FAST);
+  mysql_mutex_init(key_LOCK_global_index_usage,
+                   &LOCK_global_index_usage, MY_MUTEX_INIT_FAST);
 #ifndef EMBEDDED_LIBRARY
   Events::init_mutexes();
 #if defined(_WIN32)
@@ -3792,6 +3804,10 @@ static int init_server_components()
   setup_fpu();
 #ifdef HAVE_REPLICATION
   init_slave_list();
+#endif
+
+#ifndef EMBEDDED_LIBRARY
+  init_global_index_usage();
 #endif
 
   /* Setup logs */
@@ -8651,6 +8667,7 @@ PSI_mutex_key key_thd_timer_mutex;
 PSI_mutex_key key_LOCK_offline_mode;
 PSI_mutex_key key_LOCK_default_password_lifetime;
 PSI_mutex_key key_LOCK_group_replication_handler;
+PSI_mutex_key key_LOCK_global_index_usage;
 
 #ifdef HAVE_REPLICATION
 PSI_mutex_key key_commit_order_manager_mutex;
@@ -8747,7 +8764,8 @@ static PSI_mutex_info all_server_mutexes[]=
 #endif
   { &key_LOCK_offline_mode, "LOCK_offline_mode", PSI_FLAG_GLOBAL},
   { &key_LOCK_default_password_lifetime, "LOCK_default_password_lifetime", PSI_FLAG_GLOBAL},
-  { &key_LOCK_group_replication_handler, "LOCK_group_replication_handler", PSI_FLAG_GLOBAL}
+  { &key_LOCK_group_replication_handler, "LOCK_group_replication_handler", PSI_FLAG_GLOBAL},
+  { &key_LOCK_global_index_usage, "LOCK_global_index_usage", PSI_FLAG_GLOBAL}
 };
 
 PSI_rwlock_key key_rwlock_LOCK_grant, key_rwlock_LOCK_logger,
@@ -9287,6 +9305,7 @@ PSI_memory_key key_memory_get_all_tables;
 PSI_memory_key key_memory_fill_schema_schemata;
 PSI_memory_key key_memory_native_functions;
 PSI_memory_key key_memory_JSON;
+PSI_memory_key key_memory_index_usage;
 
 #ifdef HAVE_PSI_INTERFACE
 static PSI_memory_info all_server_memory[]=

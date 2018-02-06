@@ -2848,6 +2848,54 @@ int handler::ha_index_init(uint idx, bool sorted)
   DBUG_ASSERT(inited == NONE);
   if (!(result= index_init(idx, sorted)))
     inited= INDEX;
+
+#ifndef EMBEDDED_LIBRARY
+    // Collect the index usage stats
+    KEY* key_info = &table_share->key_info[idx];
+    if (key_info->name)
+    {
+        mysql_mutex_lock(&LOCK_global_index_usage);
+        char key[NAME_LEN * 3 + 3]; // db.table.index
+        sprintf(key, "%s.%s.%s",  table_share->table_cache_key.str,
+                table_share->table_name.str, key_info->name);
+
+        // Check if this index already exists in the global hash, get the entry if yes
+        // create a new one if not.
+        INDEX_USAGE* index_usage = (INDEX_USAGE *) my_hash_search(&global_index_usage,
+                                                                  (uchar *) key,
+                                                                  strlen(key));
+        if (index_usage == NULL)
+        {
+            index_usage = (INDEX_USAGE *) my_malloc(key_memory_index_usage,
+                                                    sizeof(INDEX_USAGE),
+                                                    MYF(MY_WME | MY_ZEROFILL));
+            if (index_usage == NULL)
+            {
+                sql_print_error("Allocating index usage failed.");
+                goto end;
+            }
+
+            strncpy(index_usage->index, key, strlen(key));
+            index_usage->index_len = strlen(key);
+            index_usage->usage = 0;
+
+            // Insert the new entry into the global hash for index usage stats.
+            if (my_hash_insert(&global_index_usage, (uchar *) index_usage))
+            {
+                sql_print_error("Inserting index usage failed.");
+                my_free((char *) index_usage);
+                goto end;
+            }
+        }
+
+        // Updates the global index usage.
+        index_usage->usage++;
+
+    end:
+        mysql_mutex_unlock(&LOCK_global_index_usage);
+    }
+#endif
+
   end_range= NULL;
   DBUG_RETURN(result);
 }
